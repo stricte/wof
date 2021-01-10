@@ -1,0 +1,227 @@
+<style>
+#root {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+#wheel {
+    display: block;
+}
+
+#spin {
+    display: block;
+    margin-bottom: 10px;
+}
+
+#arrow {
+    width: 0; 
+    height: 0; 
+    border-top: 20px solid transparent;
+    border-bottom: 20px solid transparent; 
+  
+    margin-left: -20px;
+    z-index: 100;
+
+    border-right:30px solid #EBEBEB; 
+}
+
+#wheelContainer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+#resTable {
+    color: #FF6700;
+    font-weight: bold;
+    font-size: 2rem;
+}
+
+</style>
+
+<div id="root">
+    <button id="spin">Spin it baby</button>
+    <div id="wheelContainer">
+        <canvas id="wheel" width="300" height="300"></canvas>
+        <div id="arrow"></div>
+    </div>
+    <div id="resTable"></div>
+</div>
+
+<script>
+const wheelCtx = document.querySelector("#wheel").getContext('2d');
+
+const slices = [
+    {label:"50", fontColor:"#fff", bgColor: "#D48E44", font: (size) => `bold ${size}px Roboto`, type: "points", value: 50},
+    {label:"100", fontColor:"#fff", bgColor: "#5C95D1", font: (size) => `bold ${size}px Roboto`, type: "points", value: 100},
+    {label:"10", fontColor:"#fff", bgColor: "#992891", font: (size) => `bold ${size}px Roboto`, type: "points", value: 10},
+    {label:"200", fontColor:"#fff", bgColor: "#EDA240", font: (size) => `bold ${size}px Roboto`, type: "points", value: 200},
+    {label:"5", fontColor:"#fff", bgColor: "#CC3B56", font: (size) => `bold ${size}px Roboto`, type: "points", value: 5},
+    {label:"500", fontColor:"#fff", bgColor: "#42C7AE", font: (size) => `bold ${size}px Roboto`, type: "points", value: 500},
+    {label:"Bankrupt", fontColor:"#fff", bgColor: "#000", font: (size) => `bold ${size/2}px Roboto`, type: "bankrupt"},
+];
+
+
+class WoF {
+    constructor(wheelCtx, slices) {
+        this.slices = slices;
+        this.wheelCtx = wheelCtx;
+
+        this.angSpeed = 0;
+        this.ang = 0;
+
+        // helpers
+        this.slicesCount = slices.length;
+        this.radiant = this.wheelCtx.canvas.width / 2;
+        this.sliceAng = 2 * Math.PI / this.slicesCount;
+        this.fontSize = this.radiant * 0.23;
+
+        this.running = false;
+    }
+
+    spin(){
+        if(this.running) return;
+
+        // Random max speed
+        this.maxAngSpeed = this.rand(0.1, 0.35);
+        this.running = true;
+
+        this.start();
+    }
+
+    init(onStop){
+        this.onStop = onStop;
+
+        // initial paint
+        this.paint();
+    }
+
+    start(){
+        let initialTimestamp = null;
+        
+        const m = (currentTimestamp) => {
+            if(!initialTimestamp) initialTimestamp = currentTimestamp;
+
+            this.frame(initialTimestamp, currentTimestamp);
+           
+            if(!this.running){
+                this.onStop && this.onStop(this.currentSlice());
+            }
+            else {
+                window.requestAnimationFrame(m);
+            }
+        }
+
+        window.requestAnimationFrame(m)
+    }
+
+    frame(initialTimestamp, currentTimestamp) {
+        this.adjustAngle(initialTimestamp, currentTimestamp);
+        this.rotate();
+        this.paint();
+    }
+
+    // It is hard to acc the wheel so it begins slowly
+    decelMod(initialTimestamp, currentTimestamp){
+        const duration = 30000*this.maxAngSpeed;
+        const delta = currentTimestamp - initialTimestamp;
+
+        if(delta > duration) {
+            this.running = false;
+            return 0;
+        }
+
+        const t = delta/duration * 3;
+        const y = -2*Math.pow(t-3, 2)*(t-4)*t/24.788;
+
+        return y;
+    }
+
+    adjustAngle(initialTimestamp, currentTimestamp) {
+        this.angSpeed = this.maxAngSpeed * this.decelMod(initialTimestamp, currentTimestamp);
+
+        this.ang = this.ang + this.angSpeed;
+        this.ang = this.ang % (2 * Math.PI);
+    }
+
+    paint(){
+        this.slices.forEach((slice, i) => this.paintSlice(slice, i));
+    }
+
+    paintSlice(slice, i) {
+        const startAng = this.sliceAng * i;
+        const stopAng = startAng + this.sliceAng;
+
+        this.wheelCtx.save();
+
+        this.wheelCtx.beginPath();
+
+        this.wheelCtx.fillStyle = slice.bgColor;
+        this.wheelCtx.moveTo(this.radiant, this.radiant);
+        this.wheelCtx.arc(this.radiant, this.radiant, this.radiant, startAng, stopAng);
+        this.wheelCtx.lineTo(this.radiant, this.radiant);
+        this.wheelCtx.fill();
+
+        // Move to center
+        this.wheelCtx.translate(this.radiant, this.radiant);
+        // Rotate to the middle of slice
+        this.wheelCtx.rotate(startAng + this.sliceAng / 2);
+        this.wheelCtx.textAlign = "right";
+        this.wheelCtx.fillStyle = slice.fontColor;
+        this.wheelCtx.font = slice.font(this.fontSize);
+        this.wheelCtx.fillText(slice.label, this.radiant - (this.fontSize/2), this.fontSize/4);
+
+        this.wheelCtx.restore();
+    };
+
+    rand(min, max) { 
+        return Math.random() * (max - min) + min;
+    };
+
+    currentIndex(){
+        return this.slicesCount - Math.ceil(this.slicesCount *  this.ang * 180 / Math.PI / 360);
+    }
+
+    currentSlice() {
+        return this.slices[this.currentIndex()];
+    }
+
+    rotate() {
+        this.wheelCtx.setTransform(1, 0, 0, 1, 0, 0);
+        this.wheelCtx.clearRect(0, 0, this.wheelCtx.canvas.width, this.wheelCtx.canvas.height);
+
+        this.wheelCtx.translate(this.radiant, this.radiant);
+        this.wheelCtx.rotate(this.ang);
+        this.wheelCtx.translate(-this.radiant, -this.radiant);
+    }
+}
+
+const toggleSpinBtn = () => {
+    document.querySelector("#spin").disabled = !document.querySelector("#spin").disabled;
+}
+
+const putRes = (res) => {
+    document.querySelector("#resTable").innerHTML = res;
+}
+
+document.querySelector("#spin").addEventListener("click", (e) => {
+    e.preventDefault();
+
+    toggleSpinBtn();
+
+    putRes('');
+    wof.spin();      
+});
+
+const wof = new WoF(wheelCtx, slices);
+
+const onStop = (slice) => {
+    putRes(slice.label);
+    toggleSpinBtn();
+}
+
+wof.init(onStop);
+
+</script>
